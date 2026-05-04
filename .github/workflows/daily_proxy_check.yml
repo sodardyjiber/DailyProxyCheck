@@ -36,6 +36,12 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          git add all.json valid_us_proxies.txt
           
-          git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update valid US proxy IPs" && git push)
+          # 使用 git add . 自动添加所有变更的文件，即便某个文件没生成也不会报错
+          git add .
+          
+          # 如果有变化就 commit，如果没有变化就输出提示并跳过，不会强行报错
+          git commit -m "Auto-update valid US proxy IPs" || echo "No changes to commit"
+          
+          # 推送代码
+          git push || echo "No changes to push"
