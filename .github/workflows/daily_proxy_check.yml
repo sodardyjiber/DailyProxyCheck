@@ -2,12 +2,15 @@ name: Daily Proxy Check
 
 on:
   schedule:
-    # 每天 UTC 时间 00:00 执行（北京时间早上 8:00）
     - cron: '0 0 * * *'
-  workflow_dispatch: # 允许你在 GitHub 网页端手动点击运行进行测试
+  workflow_dispatch:
 
 permissions:
-  contents: write # 赋予 Action 推送代码到仓库的权限
+  contents: write 
+
+# 新增这一行：强制 GitHub Actions 提前使用 Node.js 24 环境，从而消除警告
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   check-and-update:
@@ -33,8 +36,6 @@ jobs:
         run: |
           git config --global user.name 'github-actions[bot]'
           git config --global user.email 'github-actions[bot]@users.noreply.github.com'
-          # 添加修改的文件
           git add all.json valid_us_proxies.txt
           
-          # 如果有文件发生变化，则 commit 并 push；如果没有变化则跳过，避免报错
           git diff --quiet && git diff --staged --quiet || (git commit -m "Auto-update valid US proxy IPs" && git push)
