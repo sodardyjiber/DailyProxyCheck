@@ -12,7 +12,7 @@ GEOIP_API = "https://api.ip.sb/geoip"
 
 def get_proxy_data():
     """获取节点数据，优先从网络获取，失败则使用本地历史记录"""
-    # 增加请求头，伪装成 Chrome 浏览器，解决 403 Forbidden 错误
+    # 增加 User-Agent 头，伪装成浏览器
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
     }
@@ -23,7 +23,7 @@ def get_proxy_data():
         response.raise_for_status()
         data = response.json()
         
-        # 成功获取后，保存/覆盖本地的 all.json
+        # 保存到本地
         with open(LOCAL_JSON_FILE, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
         print("最新数据获取成功并已保存本地。")
@@ -35,19 +35,21 @@ def get_proxy_data():
                 with open(LOCAL_JSON_FILE, 'r', encoding='utf-8') as f:
                     return json.load(f)
             except json.JSONDecodeError:
-                print("本地的 all.json 文件为空或不是合法的 JSON 格式，放弃读取。")
+                print("本地文件格式错误，无法解析为 JSON。")
                 return []
         else:
-            print("本地没有历史备份文件。")
+            print("未找到本地备份文件。")
             return []
 
 def test_single_proxy(proxy_item):
     """测试单个代理的有效性和落地位置"""
+    if not isinstance(proxy_item, dict):
+        return None
+        
     ip = proxy_item.get("ip") 
     if not ip:
         return None
 
-    # 第一步：测试有效性
     try:
         valid_url = VALID_CHECK_API.format(ip)
         valid_resp = requests.get(valid_url, timeout=10)
@@ -56,7 +58,6 @@ def test_single_proxy(proxy_item):
     except Exception:
         return None
 
-    # 第二步：通过 IP 代理访问 ip.sb 验证真实落地国家
     try:
         proxies = {
             "http": f"http://{ip}",
@@ -73,35 +74,49 @@ def test_single_proxy(proxy_item):
         
     return None
 
+def extract_proxy_list(data):
+    """从不同结构的 JSON 数据中提取出包含代理节点的列表"""
+    # 如果根结构就是列表，直接返回
+    if isinstance(data, list):
+        return data
+        
+    # 如果根结构是字典，我们需要找到包含数据的那个键
+    if isinstance(data, dict):
+        # 你的 JSON 数据中，节点列表存在 'data' 这个键下面
+        if 'data' in data and isinstance(data['data'], list):
+            return data['data']
+            
+        # 如果不是 'data' 键，尝试遍历寻找第一个列表类型的值
+        for key, value in data.items():
+            if isinstance(value, list):
+                print(f"在键 '{key}' 下找到了节点列表。")
+                return value
+                
+    print("无法从数据中解析出合法的节点列表。")
+    return []
+
 def main():
-    data = get_proxy_data()
-    if not data:
+    raw_data = get_proxy_data()
+    if not raw_data:
         print("未能获取到任何数据，程序退出。")
         return
 
-    # 兼容处理：确保我们提取到的是一个列表
-    proxy_list = []
-    if isinstance(data, list):
-        proxy_list = data
-    elif isinstance(data, dict):
-        # 如果返回的是一个字典对象，尝试遍历找出里面的列表
-        for key, value in data.items():
-            if isinstance(value, list):
-                proxy_list.extend(value)
+    # 提取实际的代理节点列表
+    proxy_list = extract_proxy_list(raw_data)
     
     if not proxy_list:
-        print("无法从获取的数据中解析出节点列表，请检查 JSON 结构。")
+        print("提取节点列表失败，程序退出。")
         return
 
-    # 安全筛选：只处理字典类型的元素，避免由于异常数据导致的 'str' object has no attribute 'get' 错误
+    # 安全地筛选出美国节点
     cn_us_proxies = [
         item for item in proxy_list 
-        if isinstance(item, dict) and item.get("country_cn") == "美国"
+        if isinstance(item, dict) and item.get("meta", {}).get("country_cn") == "美国"
     ]
     
     print(f"初步筛选出 {len(cn_us_proxies)} 个标记为美国的节点，开始有效性与落地检测...")
-    if len(cn_us_proxies) == 0:
-        print("没有找到 country_cn 为美国的节点，检测结束。")
+    if not cn_us_proxies:
+        print("没有找到符合条件的美国节点，检测结束。")
         return
 
     valid_us_ips = []
@@ -112,6 +127,10 @@ def main():
                 valid_us_ips.append(res)
 
     print(f"\n检测完成！共得到 {len(valid_us_ips)} 个有效且落地为美国的 IP。")
+    
+    # 确保输出目录存在
+    os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_FILE)) or '.', exist_ok=True)
+    
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         for ip in valid_us_ips:
             f.write(f"{ip}\n")
