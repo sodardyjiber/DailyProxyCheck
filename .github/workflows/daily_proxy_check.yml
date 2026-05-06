@@ -32,6 +32,13 @@ jobs:
       - name: 运行代理检测脚本
         run: python check_proxies.py
 
+      - name: 同步最优 IP 到 Cloudflare DNS
+        env:
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          CF_ZONE_ID: ${{ secrets.CF_ZONE_ID }}
+          CF_DOMAIN: ${{ secrets.CF_DOMAIN }}
+        run: python update_dns.py
+
       - name: 提交并推送到 GitHub 仓库
         run: |
           git config --global user.name 'github-actions[bot]'
