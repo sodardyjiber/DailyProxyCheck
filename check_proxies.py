@@ -90,8 +90,16 @@ def test_single_proxy(proxy_item):
         if result.returncode == 0 and result.stdout:
             try:
                 geo_data = json.loads(result.stdout)
+                
+                # 【核心修改点】：提取落地 IP，判断是否为 IPv6
+                egress_ip = geo_data.get("ip", "")
+                if ":" in egress_ip:
+                    # 如果包含冒号，说明是 IPv6，标记原因并直接抛弃
+                    return (None, "REJECT_IPV6_EGRESS", 0)
+
                 if geo_data.get("country_code") == "US":
-                    print(f"[成功] 找到美国节点: {ip} | 延迟: {latency:.2f}s")
+                    # 打印时顺便把纯净的 IPv4 落地地址也显示出来
+                    print(f"[成功] 找到美国 IPv4 节点: {ip} | 落地IP: {egress_ip} | 延迟: {latency:.2f}s")
                     return (ip, "SUCCESS", latency)
                 else:
                     return (None, f"GEO_NOT_US_{geo_data.get('country_code')}", 0)
@@ -103,7 +111,6 @@ def test_single_proxy(proxy_item):
         return (None, "GEO_SYS_ERR", 0)
         
     return (None, "UNKNOWN_ERR", 0)
-
 def main():
     raw_data = get_proxy_data()
     proxy_list = extract_proxy_list(raw_data)
